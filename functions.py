@@ -4,9 +4,9 @@ import tempfile
 
 # ---------------------------- ENCONTRAR ID DO CONTAINER ------------------------------- #
 
-def encontrar_gvmd_id(senha: str):
+def encontrar_gvmd_id(senha_sudo: str):
 
-    id = subprocess.run(["sudo", "-S", "docker", "ps", "-q", "-f", "name=greenbone-community-edition-gvmd-1"], capture_output=True, text=True, input=senha +"\n").stdout.strip()
+    id = subprocess.run(["sudo", "-S", "docker", "ps", "-q", "-f", "name=greenbone-community-edition-gvmd-1"], capture_output=True, text=True, input=senha_sudo +"\n").stdout.strip()
     return id
 
 
@@ -14,11 +14,13 @@ def encontrar_gvmd_id(senha: str):
 
 # Move os scripts para um diretorio dentro do container do gvmd, depois cria um ambiente próprio para que estes possam ser executados
 # (cria ambiente virtual, instala pip, instala dependencias e cria um usuário não root para executar o comando 'gvm-script')
-def setup_auto_openvas(senha: str, id_container: str):
+def setup_auto_openvas(senha_sudo: str, id_container: str):
 
     script_mover_arquivos = f'''
 #!/bin/bash
 
+
+sudo -S docker exec -it greenbone-community-edition-gvmd-1 mkdir -p autovas
 sudo -S docker cp scripts/CreateTarget/create-targets-from-host-list.gmp.py {id_container}:/auto_vas/create-targets-from-host-list.gmp.py
 sudo -S docker cp scripts/CreateTask/create-tasks-from-csv.gmp.py {id_container}:/auto_vas/create-tasks-from-csv.gmp.py
 sudo -S docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
@@ -28,14 +30,13 @@ sudo -S docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_v
         file.write(script_mover_arquivos)
 
     env = {"SUDO_ASKPASS": "/bin/echo"} 
-    subprocess.run(["sudo", "-S", "./scripts/setup/mover-arquivos.sh"], input=senha + "\n", text=True, env=env)
-    subprocess.run(["sudo", "-S", "./scripts/setup/criar-ambiente.sh"], input=senha + "\n", text=True, env=env)
-
+    subprocess.run(["sudo", "-S", "./scripts/setup/mover-arquivos.sh"], input=senha_sudo + "\n", text=True, env=env)
+    subprocess.run(["sudo", "-S", "./scripts/setup/criar-ambiente.sh"], input=senha_sudo + "\n", text=True, env=env)
 
 # ---------------------------- CRIAR TARGET ------------------------------- #
 
 # Determina o IP do gateway e o de todos os hosts conectados a ele no momento e cria um TARGET com estes IPs
-def criar_target(senha: str, id_container: str):
+def criar_target(senha_openvas: str, senha_sudo: str, id_container: str):
     gerar_txt_ip()
 
     script = f'''
@@ -46,7 +47,7 @@ sudo docker cp IPs/lista_IPs.txt {id_container}:/auto_vas/lista_IPs.txt
 sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
     source /path/to/venv/bin/activate &&
     cd auto_vas &&
-    gvm-script --gmp-username admin --gmp-password {senha} socket create-targets-from-host-list.gmp.py teste lista_IPs.txt"
+    gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-targets-from-host-list.gmp.py teste lista_IPs.txt"
 
 '''
 
@@ -54,7 +55,7 @@ sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
         temp_script.write(script)
         temp_script_path = temp_script.name
     
-    comando = f'echo {senha} | sudo -S bash {temp_script_path}'
+    comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
 
     subprocess.run(comando, shell=True, text=True)
 
@@ -62,7 +63,7 @@ sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
 
 
 # Cria task com o último target criado.
-def criar_task(senha: str, id_container: str, nome_task: str):
+def criar_task(senha_openvas: str, senha_sudo: str, id_container: str, nome_task: str):
 
     # Recebendo os últimos IPs criados
     with open("IPs/lista_IPs.txt", "r") as file:
@@ -82,21 +83,21 @@ sudo docker cp scripts/CreateTask/task.csv {id_container}:/auto_vas/task.csv
 sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
     source /path/to/venv/bin/activate &&
     cd auto_vas &&
-    gvm-script --gmp-username admin --gmp-password {senha} socket create-tasks-from-csv.gmp.py task.csv"
+    gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-tasks-from-csv.gmp.py task.csv"
 '''
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".sh") as temp_script:
         temp_script.write(script)
         temp_script_path = temp_script.name
     
-    comando = f'echo {senha} | sudo -S bash {temp_script_path}'
+    comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
 
     subprocess.run(comando, shell=True, text=True)
     
 
 # ---------------------------- REALIZAR SCAN ------------------------------- #
 
-def realizar_scan(senha: str, id_container:str , nome_task: str):
+def realizar_scan(senha_openvas: str, senha_sudo: str,  id_container:str , nome_task: str):
 
     with open("scripts/RunScan/startscan.csv", "w") as file:
         content = f'"{nome_task}"'
@@ -110,14 +111,14 @@ sudo docker cp scripts/RunScan/startscan.csv {id_container}:/auto_vas/startscan.
 sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
     source /path/to/venv/bin/activate &&
     cd auto_vas &&
-    gvm-script --gmp-username admin --gmp-password {senha} socket start-scans-from-csv.py startscan.csv"
+    gvm-script --gmp-username admin --gmp-password {senha_openvas} socket start-scans-from-csv.py startscan.csv"
 
 '''
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".sh") as temp_script:
         temp_script.write(script)
         temp_script_path = temp_script.name
     
-    comando = f'echo {senha} | sudo -S bash {temp_script_path}'
+    comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
 
     subprocess.run(comando, shell=True, text=True)
 
