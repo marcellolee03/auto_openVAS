@@ -1,5 +1,6 @@
 from auto_vas_brain import AutoVASBrain
 from tkinter import *
+from tkinter import messagebox
 
 class AutoVASInterface:
 
@@ -63,7 +64,12 @@ class AutoVASInterface:
         self.senha_sudo = self.senha_sudo_entry.get()
         self.id_container = self.brain.encontrar_gmvd_id(self.senha_sudo)
 
-        self.setup_auto_openvas(self.senha_sudo, self.id_container)
+        if not self.senha_sudo:
+            messagebox.showinfo(title = "Erro", message = "Para realizar o setup, informe a senha do Super Usuário.")
+
+        else:
+            self.brain.setup_auto_openvas(self.senha_sudo, self.id_container)
+            messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. A aplicação está pronta para ser utilizada!")
     
 
     def oneclick_scan(self):
@@ -71,11 +77,17 @@ class AutoVASInterface:
         self.senha_openvas = self.senha_openvas_entry.get()
         self.nome_task = self.nome_task_entry.get()
         self.id_container = self.brain.encontrar_gmvd_id(self.senha_sudo)
+
+        if not self.senha_sudo or not self.senha_openvas or not self.nome_task:
+            messagebox.showinfo(title = "Erro", message = "Certifique-se de não deixar nenhum campo vazio!")
+
+        else:
+            self.brain.criar_target(self.senha_openvas, self.senha_sudo, self.id_container)
+            self.brain.criar_task(self.senha_openvas, self.senha_sudo, self.id_container, self.nome_task)
+            self.brain.realizar_scan(self.senha_openvas, self.senha_sudo, self.id_container, self.nome_task)
+
+            messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. Task {self.nome_task} criada e iniciada!")
         
-        self.brain.criar_target(self.senha_openvas, self.senha_sudo, self.id_container)
-        self.brain.criar_task(self.senha_openvas, self.senha_sudo, self.id_container, self.nome_task)
-        self.brain.realizar_scan(self.senha_openvas, self.senha_sudo, self.id_container, self.nome_task)
-    
 
     def opc_avancadas(self):
         self.window = Toplevel()
