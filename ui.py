@@ -1,6 +1,7 @@
 from auto_vas_brain import AutoVASBrain
 from tkinter import *
 from tkinter import messagebox
+from tkinter.ttk import *
 
 class AutoVASInterface:
 
@@ -71,8 +72,11 @@ class AutoVASInterface:
             self.brain.setup_auto_openvas(self.senha_sudo, self.id_container)
             messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. A aplicação está pronta para ser utilizada!")
     
+    
+    # ---------------------------- ONE-CLICK SCAN ------------------------------- #
 
     def oneclick_scan(self):
+        #Recolhendo os credenciais
         self.senha_sudo = self.senha_sudo_entry.get()
         self.senha_openvas = self.senha_openvas_entry.get()
         self.nome_task = self.nome_task_entry.get()
@@ -82,11 +86,67 @@ class AutoVASInterface:
             messagebox.showinfo(title = "Erro", message = "Certifique-se de não deixar nenhum campo vazio!")
 
         else:
-            self.brain.criar_target(self.senha_openvas, self.senha_sudo, self.id_container)
-            self.brain.criar_task(self.senha_openvas, self.senha_sudo, self.id_container, self.nome_task)
-            self.brain.realizar_scan(self.senha_openvas, self.senha_sudo, self.id_container, self.nome_task)
+            self.progress_window = Toplevel()
+            self.progress_window.config(padx=20, pady=10)
+            self.progress_window.resizable(width=False, height=False)
 
-            messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. Task {self.nome_task} criada e iniciada!")
+            self.bar = Progressbar(self.progress_window, orient = HORIZONTAL)
+            self.bar.grid(row = 0, column = 0, pady = 15, columnspan = 2)
+
+            self.status_label = Label(self.progress_window, text = "Encontrando o IP do gateway...", font = ("calibre", 10, "normal"))
+            self.status_label.grid(row = 1, column = 0, columnspan = 2)
+
+            #Utilizando o metodo after para dar 100ms para que a janela se forme antes do início da função
+            self.progress_window.after(100, self.encontrar_gateway_ui, self.bar, self.status_label, self.senha_sudo, self.senha_openvas, self.nome_task, self.id_container)
+
+    
+        # ---------------------------- ENCONTRAR GATEWAY ------------------------------- #
+
+    def encontrar_gateway_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
+        self.gateway_ip = self.brain.encontrar_gateway()
+        progress_bar['value'] += 20
+        status_label.config(text = "Armazenando IPs de hosts conectados ao gateway...")
+
+        #Novamente utilizando o método after para que a janela atualize antes do início da próxima função
+        self.progress_window.after(100, self.armazenar_hosts_ui, progress_bar, status_label, self.gateway_ip, senha_sudo, senha_openvas, nome_task, id_container)
+
+    
+        # ---------------------------- ARMAZENAR HOSTS ------------------------------- #
+
+    def armazenar_hosts_ui(self, progress_bar, status_label, gateway_ip, senha_sudo, senha_openvas, nome_task, id_container):
+        self.brain.armazenar_hosts(gateway_ip)
+        progress_bar['value'] += 20
+        status_label.config(text = "Criando target...")
+
+        self.progress_window.after(100, self.criar_target_ui, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container)
+
+
+        # ---------------------------- CRIAR TARGET ------------------------------- #
+
+    def criar_target_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
+        self.brain.criar_target(senha_openvas, senha_sudo, id_container)
+        progress_bar['value'] += 20
+        status_label.config(text = "Criando task...")
+
+        self.progress_window.after(100, self.criar_task_ui, progress_bar,status_label, senha_sudo, senha_openvas, nome_task, id_container)
+    
+        # ---------------------------- CRIAR TASK ------------------------------- #
+
+    def criar_task_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
+        self.brain.criar_task(senha_openvas, senha_sudo, id_container, nome_task)
+        progress_bar['value'] += 20
+        status_label.config(text = "Colocando scan para ser realizado...")
+        
+        self.progress_window.after(100, self.realizar_scan_ui, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container)
+
+        # ---------------------------- REALIZAR SCAN ------------------------------- #
+
+    def realizar_scan_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
+        self.brain.realizar_scan(senha_openvas, senha_sudo, id_container, nome_task)
+        progress_bar['value'] += 20
+        status_label.config(text = "Scan iniciado com sucesso!")
+
+        #messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. Task {self.nome_task} criada e iniciada!")
         
 
     def opc_avancadas(self):

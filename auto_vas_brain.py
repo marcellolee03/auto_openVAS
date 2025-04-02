@@ -14,21 +14,31 @@ class AutoVASBrain:
     # (cria ambiente virtual, instala pip, instala dependencias e cria um usuário não root para executar o comando 'gvm-script')
 
     def setup_auto_openvas(self, senha_sudo:str, id_container:str):
-        script_mover_arquivos = f'''
+        script = f'''
 #!/bin/bash
 
+sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "mkdir auto_vas"
 
 sudo -S docker cp scripts/CreateTarget/create-targets-from-host-list.gmp.py {id_container}:/auto_vas/create-targets-from-host-list.gmp.py
 sudo -S docker cp scripts/CreateTask/create-tasks-from-csv.gmp.py {id_container}:/auto_vas/create-tasks-from-csv.gmp.py
 sudo -S docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
+
+
+sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "apt-get update && apt-get install -y python3-venv python3-pip"
+sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "python3 -m venv path/to/venv && \
+    source /path/to/venv/bin/activate && \
+    pip install --upgrade pip && \
+    pip install python-gvm gvm-tools"
+sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas -s /bin/bash"
 '''
 
-        with open("scripts/setup/mover-arquivos.sh", "w") as file:
-            file.write(script_mover_arquivos)
+        with tempfile.NamedTemporaryFile(mode="w",delete = False, suffix=".sh") as temp_script:
+            temp_script.write(script)
+            temp_script_path = temp_script.name
+    
+        comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
 
-        env = {"SUDO_ASKPASS": "/bin/echo"} 
-        subprocess.run(["sudo", "-S", "./scripts/setup/criar-ambiente.sh"], input=senha_sudo + "\n", text=True, env=env)
-        subprocess.run(["sudo", "-S", "./scripts/setup/mover-arquivos.sh"], input=senha_sudo + "\n", text=True, env=env)
+        subprocess.run(comando, shell=True, text=True)
 
     
     # ---------------------------- ENCONTRAR ID DO CONTAINER ------------------------------- #
@@ -43,7 +53,9 @@ sudo -S docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_v
     # Cria um .txt contendo o IP do gateway e todos os hosts conectados a ele neste exato momento
     # Utiliza traceroute e nmap
 
-    def gerar_txt_ip(self):
+        # ---------------------------- ENCONTRAR GATEWAY ------------------------------- #
+
+    def encontrar_gateway(self):
         # Executando o traceroute e capturando a saída
         saida_traceroute = subprocess.run("traceroute -n google.com", shell=True, capture_output=True, text=True)
         saida_traceroute = saida_traceroute.stdout
@@ -54,8 +66,16 @@ sudo -S docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_v
         if match:
             gateway_ip = match.group(1)
             print(f"Gateway encontrado: {gateway_ip}")
+            return gateway_ip
+        
+        else:
+            print("Erro. Gateway não encontrado.")
 
-            # Comando Nmap para escanear a rede do Gateway
+
+        # ---------------------------- ARMAZENAR IPs ------------------------------- #
+
+    def armazenar_hosts(self, gateway_ip):
+        # Comando Nmap para escanear a rede do Gateway
             comando_nmap = f"nmap -sn -n {gateway_ip}/24 | grep 'Nmap scan report'" + "| awk '{print $5}' | paste -sd ','"
 
             # Executando o Nmap e armazenando os IPs
@@ -65,20 +85,14 @@ sudo -S docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_v
             # Salvando os IPs no arquivo lista_IPs.txt
             with open("IPs/lista_IPs.txt", "w") as file:
                 file.write(ips_ativos)
-
-            print("Scan concluído! IPs salvos em lista_IPs.txt.")
-
-        else:
-            print("Erro: Gateway não encontrado no traceroute.")
-
+                print("Hosts armazenados com sucesso!")
+            
 
     # ---------------------------- CRIAR TARGET ------------------------------- #
 
     # Determina o IP do gateway e o de todos os hosts conectados a ele no momento e cria um TARGET com estes IPs
 
     def criar_target(self, senha_openvas: str, senha_sudo: str, id_container: str):
-    
-        self.gerar_txt_ip()
 
         script = f'''
 #!/bin/bash
