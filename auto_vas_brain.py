@@ -1,6 +1,6 @@
 import subprocess
 import tempfile
-from re import search, MULTILINE
+from re import search, MULTILINE, findall
 
 
 class AutoVASBrain:
@@ -61,7 +61,7 @@ sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas
         saida_traceroute = saida_traceroute.stdout
 
         # Pegando o primeiro IP da lista (Gateway)
-        match = search(r"^\s*1\s+([\d.]+)", saida_traceroute, MULTILINE)
+        match = search(r'\n\s*1\s+_gateway\s+\((\d+\.\d+\.\d+\.\d+)\)', saida_traceroute)
 
         if match:
             gateway_ip = match.group(1)
