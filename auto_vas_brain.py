@@ -1,12 +1,29 @@
 import subprocess
 import tempfile
-from re import search, MULTILINE, findall
+import os
+from re import search, MULTILINE
 
 
 class AutoVASBrain:
 
     def __init__(self):
-        self.count = 0
+        pass
+    
+    # ---------------------------- FUNÇÃO AUXILIAR ------------------------------- #
+
+    def exec_script_temp(self, script, senha_sudo):
+
+        with tempfile.NamedTemporaryFile(mode="w", delete = False, suffix=".sh") as temp_script:
+            temp_script.write(script)
+            temp_script_path = temp_script.name
+
+        try:
+            comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
+            subprocess.run(comando, shell=True, text=True)
+        
+        finally:
+            if os.path.exists(temp_script_path):
+                os.remove(temp_script_path)
     
     # ---------------------------- SETUP INICIAL ------------------------------- #
 
@@ -17,19 +34,22 @@ class AutoVASBrain:
         script = f'''
 #!/bin/bash
 
-sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "mkdir auto_vas"
+apt install traceroute
+apt install nmap
 
-sudo -S docker cp scripts/CreateTarget/create-targets-from-host-list.gmp.py {id_container}:/auto_vas/create-targets-from-host-list.gmp.py
-sudo -S docker cp scripts/CreateTask/create-tasks-from-csv.gmp.py {id_container}:/auto_vas/create-tasks-from-csv.gmp.py
-sudo -S docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
+docker exec -i greenbone-community-edition-gvmd-1 bash -c "mkdir auto_vas"
+
+docker cp scripts/CreateTarget/create-targets-from-host-list.gmp.py {id_container}:/auto_vas/create-targets-from-host-list.gmp.py
+docker cp scripts/CreateTask/create-tasks-from-csv.gmp.py {id_container}:/auto_vas/create-tasks-from-csv.gmp.py
+docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
 
 
-sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "apt-get update && apt-get install -y python3-venv python3-pip"
-sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "python3 -m venv path/to/venv && \
+docker exec -i greenbone-community-edition-gvmd-1 bash -c "apt-get update && apt-get install -y python3-venv python3-pip"
+docker exec -i greenbone-community-edition-gvmd-1 bash -c "python3 -m venv path/to/venv && \
     source /path/to/venv/bin/activate && \
     pip install --upgrade pip && \
     pip install python-gvm gvm-tools"
-sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas -s /bin/bash"
+docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas -s /bin/bash"
 '''
 
         with tempfile.NamedTemporaryFile(mode="w",delete = False, suffix=".sh") as temp_script:
@@ -40,11 +60,13 @@ sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas
 
         subprocess.run(comando, shell=True, text=True)
 
-    
     # ---------------------------- ENCONTRAR ID DO CONTAINER ------------------------------- #
 
     def encontrar_gmvd_id(self, senha_sudo:str):
-        id = subprocess.run(["sudo", "-S", "docker", "ps", "-q", "-f", "name=greenbone-community-edition-gvmd-1"], capture_output=True, text=True, input=senha_sudo +"\n").stdout.strip()
+        
+        comando = f'echo {senha_sudo} | sudo -S docker ps -q -f name=greenbone-community-edition-gvmd-1'
+        id = subprocess.run(comando, capture_output=True, text=True, shell=True).stdout.strip()
+
         return id
     
 
@@ -53,12 +75,17 @@ sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas
     # Cria um .txt contendo o IP do gateway e todos os hosts conectados a ele neste exato momento
     # Utiliza traceroute e nmap
 
-        # ---------------------------- ENCONTRAR GATEWAY ------------------------------- #
+        ## ---------------------------- ENCONTRAR GATEWAY ------------------------------- ##
 
-    def encontrar_gateway(self):
+    def encontrar_gateway(self, senha_sudo:str):
+
         # Executando o traceroute e capturando a saída
-        saida_traceroute = subprocess.run("traceroute -n google.com", shell=True, capture_output=True, text=True)
+
+        comando = f'echo {senha_sudo} | sudo -S traceroute -I google.com'
+
+        saida_traceroute = subprocess.run(comando, shell=True, capture_output=True, text=True)
         saida_traceroute = saida_traceroute.stdout
+
 
         # Pegando o primeiro IP da lista (Gateway)
         match = search(r'\n\s*1\s+_gateway\s+\((\d+\.\d+\.\d+\.\d+)\)', saida_traceroute)
@@ -72,9 +99,9 @@ sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas
             print("Erro. Gateway não encontrado.")
 
 
-        # ---------------------------- ARMAZENAR IPs ------------------------------- #
+        ## ---------------------------- ARMAZENAR IPs ------------------------------- ##
 
-    def armazenar_hosts(self, gateway_ip):
+    def armazenar_hosts(self, gateway_ip: str):
         # Comando Nmap para escanear a rede do Gateway
             comando_nmap = f"nmap -sn -n {gateway_ip}/24 | grep 'Nmap scan report'" + "| awk '{print $5}' | paste -sd ','"
 
@@ -97,23 +124,15 @@ sudo docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas
         script = f'''
 #!/bin/bash
 
-sudo docker cp IPs/lista_IPs.txt {id_container}:/auto_vas/lista_IPs.txt
+docker cp IPs/lista_IPs.txt {id_container}:/auto_vas/lista_IPs.txt
 
-sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
+docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
     source /path/to/venv/bin/activate &&
     cd auto_vas &&
     gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-targets-from-host-list.gmp.py teste lista_IPs.txt"
 
 '''
-
-        with tempfile.NamedTemporaryFile(mode="w", delete = False, suffix=".sh") as temp_script:
-            temp_script.write(script)
-            temp_script_path = temp_script.name
-    
-        comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
-
-        subprocess.run(comando, shell=True, text=True)
-
+        self.exec_script_temp(script, senha_sudo)
 
     # ---------------------------- CRIAR TASK ------------------------------- #
 
@@ -134,21 +153,15 @@ sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
     
         script = f'''#!/bin/bash
 
-sudo docker cp scripts/CreateTask/task.csv {id_container}:/auto_vas/task.csv
+docker cp scripts/CreateTask/task.csv {id_container}:/auto_vas/task.csv
 
-sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
+docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
     source /path/to/venv/bin/activate &&
     cd auto_vas &&
     gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-tasks-from-csv.gmp.py task.csv"
 '''
 
-        with tempfile.NamedTemporaryFile(mode="w",delete = False, suffix=".sh") as temp_script:
-            temp_script.write(script)
-            temp_script_path = temp_script.name
-    
-        comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
-
-        subprocess.run(comando, shell=True, text=True)
+        self.exec_script_temp(script, senha_sudo)
     
 
     # ---------------------------- REALIZAR SCAN ------------------------------- #
@@ -162,18 +175,12 @@ sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
         script = f'''
 #!/bin/bash
 
-sudo docker cp scripts/RunScan/startscan.csv {id_container}:/auto_vas/startscan.csv
+docker cp scripts/RunScan/startscan.csv {id_container}:/auto_vas/startscan.csv
 
-sudo docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
+docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
     source /path/to/venv/bin/activate &&
     cd auto_vas &&
     gvm-script --gmp-username admin --gmp-password {senha_openvas} socket start-scans-from-csv.py startscan.csv"
 
 '''
-        with tempfile.NamedTemporaryFile(mode="w", delete = False, suffix=".sh") as temp_script:
-            temp_script.write(script)
-            temp_script_path = temp_script.name
-    
-        comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
-
-        subprocess.run(comando, shell=True, text=True)
+        self.exec_script_temp(script, senha_sudo)

@@ -7,6 +7,8 @@ class AutoVASInterface:
 
     def __init__(self, auto_vas_brain: AutoVASBrain):
 
+    # ---------------------------- MONTANDO UI ------------------------------- #
+
         #Funções
         self.brain = auto_vas_brain
 
@@ -60,6 +62,7 @@ class AutoVASInterface:
 
         self.window.mainloop()
 
+    # ---------------------------- INICIAR SETUP AUTOVAS ------------------------------- #
     
     def setup(self):
         self.senha_sudo = self.senha_sudo_entry.get()
@@ -69,11 +72,22 @@ class AutoVASInterface:
             messagebox.showinfo(title = "Erro", message = "Para realizar o setup, informe a senha do Super Usuário.")
 
         else:
-            self.brain.setup_auto_openvas(self.senha_sudo, self.id_container)
-            messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. A aplicação está pronta para ser utilizada!")
+            self.progress_window = Toplevel()
+            self.progress_window.config(padx=40, pady=20)
+            self.progress_window.resizable(width=False,height=False)
+            self.progress_window.protocol("WM_DELETE_WINDOW", lambda: None)
+
+            self.status_label = Label(self.progress_window, text = "Preparando o ambiente. Por favor, não feche a aplicação...", font = ("calibre", 10, "normal"))
+            self.status_label.grid(row=0,column=0)
+
+            self.f = lambda senha_sudo, id_container : (self.brain.setup_auto_openvas(senha_sudo, id_container),\
+                                                        self.status_label.config(text = "Operação concluída com sucesso! A aplicação está pronta para ser utilizada"),\
+                                                        self.progress_window.protocol("WM_DELETE_WINDOW", self.progress_window.destroy))
+
+            self.window.after(100, self.f, self.senha_sudo, self.id_container)
     
     
-    # ---------------------------- ONE-CLICK SCAN ------------------------------- #
+    # ---------------------------- INICIAR ONE-CLICK SCAN ------------------------------- #
 
     def oneclick_scan(self):
         #Recolhendo os credenciais
@@ -81,6 +95,7 @@ class AutoVASInterface:
         self.senha_openvas = self.senha_openvas_entry.get()
         self.nome_task = self.nome_task_entry.get()
         self.id_container = self.brain.encontrar_gmvd_id(self.senha_sudo)
+
 
         if not self.senha_sudo or not self.senha_openvas or not self.nome_task:
             messagebox.showinfo(title = "Erro", message = "Certifique-se de não deixar nenhum campo vazio!")
@@ -96,14 +111,15 @@ class AutoVASInterface:
             self.status_label = Label(self.progress_window, text = "Encontrando o IP do gateway...", font = ("calibre", 10, "normal"))
             self.status_label.grid(row = 1, column = 0, columnspan = 2)
 
+
             #Utilizando o metodo after para dar 100ms para que a janela se forme antes do início da função
             self.progress_window.after(100, self.encontrar_gateway_ui, self.bar, self.status_label, self.senha_sudo, self.senha_openvas, self.nome_task, self.id_container)
 
     
-        # ---------------------------- ENCONTRAR GATEWAY ------------------------------- #
+        ## ---------------------------- ENCONTRAR GATEWAY ------------------------------- ##
 
     def encontrar_gateway_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
-        self.gateway_ip = self.brain.encontrar_gateway()
+        self.gateway_ip = self.brain.encontrar_gateway(senha_sudo)
         progress_bar['value'] += 20
         status_label.config(text = "Armazenando IPs de hosts conectados ao gateway...")
 
@@ -111,7 +127,7 @@ class AutoVASInterface:
         self.progress_window.after(100, self.armazenar_hosts_ui, progress_bar, status_label, self.gateway_ip, senha_sudo, senha_openvas, nome_task, id_container)
 
     
-        # ---------------------------- ARMAZENAR HOSTS ------------------------------- #
+        ## ---------------------------- ARMAZENAR HOSTS ------------------------------- ##
 
     def armazenar_hosts_ui(self, progress_bar, status_label, gateway_ip, senha_sudo, senha_openvas, nome_task, id_container):
         self.brain.armazenar_hosts(gateway_ip)
@@ -121,7 +137,7 @@ class AutoVASInterface:
         self.progress_window.after(100, self.criar_target_ui, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container)
 
 
-        # ---------------------------- CRIAR TARGET ------------------------------- #
+        ## ---------------------------- CRIAR TARGET ------------------------------- ##
 
     def criar_target_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
         self.brain.criar_target(senha_openvas, senha_sudo, id_container)
@@ -130,7 +146,7 @@ class AutoVASInterface:
 
         self.progress_window.after(100, self.criar_task_ui, progress_bar,status_label, senha_sudo, senha_openvas, nome_task, id_container)
     
-        # ---------------------------- CRIAR TASK ------------------------------- #
+        ## ---------------------------- CRIAR TASK ------------------------------- ##
 
     def criar_task_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
         self.brain.criar_task(senha_openvas, senha_sudo, id_container, nome_task)
@@ -139,15 +155,18 @@ class AutoVASInterface:
         
         self.progress_window.after(100, self.realizar_scan_ui, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container)
 
-        # ---------------------------- REALIZAR SCAN ------------------------------- #
+        ## ---------------------------- REALIZAR SCAN ------------------------------- ##
 
     def realizar_scan_ui(self, progress_bar, status_label, senha_sudo, senha_openvas, nome_task, id_container):
         self.brain.realizar_scan(senha_openvas, senha_sudo, id_container, nome_task)
         progress_bar['value'] += 20
         status_label.config(text = "Scan iniciado com sucesso!")
+        self.progress_window.destroy()
 
-        #messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. Task {self.nome_task} criada e iniciada!")
+        messagebox.showinfo(title = "Sucesso!", message = f"Operação concluída com sucesso. Task {self.nome_task} criada e iniciada!")
         
+
+    # ---------------------------- OPÇÕES AVANÇADAS (FUNCIONALIDADE FUTURA) ------------------------------- #
 
     def opc_avancadas(self):
         self.window = Toplevel()
