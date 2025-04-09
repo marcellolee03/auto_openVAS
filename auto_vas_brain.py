@@ -2,6 +2,9 @@ import subprocess
 import tempfile
 import os
 from re import search, MULTILINE
+import re
+from tkinter import filedialog
+import tkinter as tk
 
 
 class AutoVASBrain:
@@ -31,26 +34,29 @@ class AutoVASBrain:
     # (cria ambiente virtual, instala pip, instala dependencias e cria um usuário não root para executar o comando 'gvm-script')
 
     def setup_auto_openvas(self, senha_sudo:str, id_container:str):
+        
         script = f'''
-#!/bin/bash
+        #!/bin/bash
 
-apt install traceroute
-apt install nmap
+        apt install traceroute
+        apt install nmap
 
-docker exec -i greenbone-community-edition-gvmd-1 bash -c "mkdir auto_vas"
+        docker exec -i greenbone-community-edition-gvmd-1 bash -c "mkdir auto_vas"
 
-docker cp scripts/CreateTarget/create-targets-from-host-list.gmp.py {id_container}:/auto_vas/create-targets-from-host-list.gmp.py
-docker cp scripts/CreateTask/create-tasks-from-csv.gmp.py {id_container}:/auto_vas/create-tasks-from-csv.gmp.py
-docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
+        docker cp scripts/CreateTarget/create-targets-from-host-list.gmp.py {id_container}:/auto_vas/create-targets-from-host-list.gmp.py
+        docker cp scripts/CreateTask/create-tasks-from-csv.gmp.py {id_container}:/auto_vas/create-tasks-from-csv.gmp.py
+        docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
+        docker cp scripts/ListReports/list-reports.gmp.py {id_container}:/auto_vas/list-reports.gmp.py
+        docker cp scripts/ListReports/export-pdf-report.gmp.py {id_container}:/auto_vas/export-pdf-report.gmp.py
 
 
-docker exec -i greenbone-community-edition-gvmd-1 bash -c "apt-get update && apt-get install -y python3-venv python3-pip"
-docker exec -i greenbone-community-edition-gvmd-1 bash -c "python3 -m venv path/to/venv && \
-    source /path/to/venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install python-gvm gvm-tools"
-docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas -s /bin/bash"
-'''
+        docker exec -i greenbone-community-edition-gvmd-1 bash -c "apt-get update && apt-get install -y python3-venv python3-pip"
+        docker exec -i greenbone-community-edition-gvmd-1 bash -c "python3 -m venv path/to/venv && \
+            source /path/to/venv/bin/activate && \
+            pip install --upgrade pip && \
+            pip install python-gvm gvm-tools"
+        docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas -s /bin/bash"
+        '''
 
         with tempfile.NamedTemporaryFile(mode="w",delete = False, suffix=".sh") as temp_script:
             temp_script.write(script)
@@ -122,16 +128,17 @@ docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas -s /
     def criar_target(self, senha_openvas: str, senha_sudo: str, id_container: str):
 
         script = f'''
-#!/bin/bash
+        #!/bin/bash
 
-docker cp IPs/lista_IPs.txt {id_container}:/auto_vas/lista_IPs.txt
+        docker cp IPs/lista_IPs.txt {id_container}:/auto_vas/lista_IPs.txt
 
-docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
-    source /path/to/venv/bin/activate &&
-    cd auto_vas &&
-    gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-targets-from-host-list.gmp.py teste lista_IPs.txt"
+        docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
+            source /path/to/venv/bin/activate &&
+            cd auto_vas &&
+            gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-targets-from-host-list.gmp.py teste lista_IPs.txt"
 
-'''
+        '''
+
         self.exec_script_temp(script, senha_sudo)
 
     # ---------------------------- CRIAR TASK ------------------------------- #
@@ -151,15 +158,16 @@ docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
         with open("scripts/CreateTask/task.csv", "w") as file:
             file.write(csv_content)
     
-        script = f'''#!/bin/bash
+        script = f'''
+        #!/bin/bash
 
-docker cp scripts/CreateTask/task.csv {id_container}:/auto_vas/task.csv
+        docker cp scripts/CreateTask/task.csv {id_container}:/auto_vas/task.csv
 
-docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
-    source /path/to/venv/bin/activate &&
-    cd auto_vas &&
-    gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-tasks-from-csv.gmp.py task.csv"
-'''
+        docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
+            source /path/to/venv/bin/activate &&
+            cd auto_vas &&
+            gvm-script --gmp-username admin --gmp-password {senha_openvas} socket create-tasks-from-csv.gmp.py task.csv"
+        '''
 
         self.exec_script_temp(script, senha_sudo)
     
@@ -172,15 +180,89 @@ docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
             content = f'"{nome_task}"'
             file.write(content)
 
+
         script = f'''
-#!/bin/bash
+        #!/bin/bash
 
-docker cp scripts/RunScan/startscan.csv {id_container}:/auto_vas/startscan.csv
+        docker cp scripts/RunScan/startscan.csv {id_container}:/auto_vas/startscan.csv
 
-docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
-    source /path/to/venv/bin/activate &&
-    cd auto_vas &&
-    gvm-script --gmp-username admin --gmp-password {senha_openvas} socket start-scans-from-csv.py startscan.csv"
+        docker exec -i --user auto_vas greenbone-community-edition-gvmd-1 bash -c "
+            source /path/to/venv/bin/activate &&
+            cd auto_vas &&
+            gvm-script --gmp-username admin --gmp-password {senha_openvas} socket start-scans-from-csv.py startscan.csv"
 
-'''
+        '''
+
         self.exec_script_temp(script, senha_sudo)
+        
+
+    # ---------------------------- Fazer Relatorio ------------------------------- #
+
+
+    def escolher_local_arquivo(self):
+
+        caminho = filedialog.asksaveasfilename(
+            title="Salvar relatório como",
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf"), ("Todos os arquivos", "*.*")]
+        )
+
+        return caminho
+
+
+    def gerar_relatorio(self, senha_openvas: str, senha_sudo: str, id_container: str):
+
+        script = f'''
+        #!/bin/bash
+
+        docker cp scripts/ListReports/export-pdf-report.gmp.py {id_container}:/auto_vas/export-pdf-report.gmp.py
+        docker cp scripts/ListReports/list-reports.gmp.py {id_container}:/auto_vas/list-reports.gmp.py
+
+        docker exec -i --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket list-reports.gmp.py"
+        '''
+
+        with tempfile.NamedTemporaryFile(mode="w", delete = False, suffix=".sh") as temp_script:
+            temp_script.write(script)
+            temp_script_path = temp_script.name
+
+        try:
+            comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
+            resultado = subprocess.run(comando, shell=True, capture_output = True, text=True)
+            saida = resultado.stdout
+        
+        finally:
+            if os.path.exists(temp_script_path):
+                os.remove(temp_script_path)
+
+        ids = re.findall(r'\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b', saida)
+
+        print("IDs encontrados:")
+        for id in ids:
+            print(id)
+    
+        return ids
+
+
+    def baixar_relatorio(self, relatorio_id, senha_sudo: str, id_container: str, senha_openvas):
+        caminho_arquivo = self.escolher_local_arquivo()
+
+        if not caminho_arquivo:
+            print("Operação cancelada pelo usuário.")
+            return
+
+        # Pega apenas o nome do arquivo com extensão para passar no comando
+        nome_arquivo = caminho_arquivo.split("/")[-1]
+
+        script = f'''
+        docker exec {id_container} bash -c "chmod 777 /auto_vas"
+        docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-pdf-report.gmp.py {relatorio_id} relatorio"
+        docker cp {id_container}:/auto_vas/relatorio.pdf  "{caminho_arquivo}"
+
+        '''
+
+        self.exec_script_temp(script, senha_sudo)
+
+        print(f"Relatório sendo salvo em: {caminho_arquivo}") 
+    
+   
+   

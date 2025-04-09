@@ -54,7 +54,10 @@ class AutoVASInterface:
         self.setup_autovas.grid(row=5, column=0, sticky = "ew")
 
         self.avancado = Button(text = "Opções Avançadas", command = self.opc_avancadas)
-        self.avancado.grid(row=5, column=1, pady=20, columnspan = 2, sticky= "ew")
+        self.avancado.grid(row=5, column=2, pady=20)
+        
+        self.relatorios = Button(text = "Ver Relatorios", command = self.relatorio)
+        self.relatorios.grid(row=5, column=1, pady=20, sticky = "nsew")
 
         self.one_click_scan_button = Button(text = "Realizar Scan", command = self.oneclick_scan)
         self.one_click_scan_button.grid(row=6, column=0, sticky = "ew", columnspan = 3)
@@ -179,3 +182,30 @@ class AutoVASInterface:
 
         self.atualizar_openvas = Button(self.window, text = "Atualizar OpenVAS")
         self.atualizar_openvas.grid(row = 1, column = 0)
+   
+    # ---------------------------- Ver Relatorios ------------------------------- #
+
+    def relatorio(self):
+        self.senha_sudo = self.senha_sudo_entry.get()
+        self.senha_openvas = self.senha_openvas_entry.get()
+        self.id_container = self.brain.encontrar_gmvd_id(self.senha_sudo)
+
+        ids = self.brain.gerar_relatorio(self.senha_openvas, self.senha_sudo, self.id_container)
+
+        self.window = Toplevel()
+        self.window.wm_title("Ver Relatórios")
+        self.window.config(padx=40, pady=40)
+        self.window.resizable(width=False, height=False)
+
+        titulo = Label(self.window, text="Relatórios Disponíveis", font=("calibre", 20, "bold"))
+        titulo.grid(row=0, column=0, columnspan=2, pady=(0, 20))
+
+        for idx, relatorio_id in enumerate(ids):
+            label_id = Label(self.window, text=relatorio_id, font=("calibre", 12))
+            label_id.grid(row=idx+1, column=0, sticky="w", padx=(0, 20), pady=5)
+
+            btn_baixar = Button(self.window, text="Baixar", command=lambda rid=relatorio_id: self.brain.baixar_relatorio(rid,self.senha_sudo,self.id_container,self.senha_openvas))
+            btn_baixar.grid(row=idx+1, column=1, pady=5)
+
+    
+
