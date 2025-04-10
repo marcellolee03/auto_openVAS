@@ -4,7 +4,6 @@ import os
 from re import search, MULTILINE
 import re
 from tkinter import filedialog
-import tkinter as tk
 
 
 class AutoVASBrain:
@@ -34,7 +33,6 @@ class AutoVASBrain:
     # (cria ambiente virtual, instala pip, instala dependencias e cria um usuário não root para executar o comando 'gvm-script')
 
     def setup_auto_openvas(self, senha_sudo:str, id_container:str):
-        
         script = f'''
         #!/bin/bash
 
@@ -48,13 +46,18 @@ class AutoVASBrain:
         docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
         docker cp scripts/ListReports/list-reports.gmp.py {id_container}:/auto_vas/list-reports.gmp.py
         docker cp scripts/ListReports/export-pdf-report.gmp.py {id_container}:/auto_vas/export-pdf-report.gmp.py
+        docker cp scripts/ListReports/export-xml-report.gmp.py {id_container}:/auto_vas/export-xml-report.gmp.py
+        docker cp scripts/ListReports/list-reports.gmp.py {id_container}:/auto_vas/list-reports.gmp.py
 
 
         docker exec -i greenbone-community-edition-gvmd-1 bash -c "apt-get update && apt-get install -y python3-venv python3-pip"
         docker exec -i greenbone-community-edition-gvmd-1 bash -c "python3 -m venv path/to/venv && \
             source /path/to/venv/bin/activate && \
             pip install --upgrade pip && \
-            pip install python-gvm gvm-tools"
+            pip install python-gvm gvm-tools && \
+            pip install OpenVAS-Reporting && \
+            pip install pyyaml && \
+            pip install defusedxml"
         docker exec -i greenbone-community-edition-gvmd-1 bash -c "useradd auto_vas -s /bin/bash"
         '''
 
@@ -66,7 +69,9 @@ class AutoVASBrain:
 
         subprocess.run(comando, shell=True, text=True)
 
+
     # ---------------------------- ENCONTRAR ID DO CONTAINER ------------------------------- #
+
 
     def encontrar_gmvd_id(self, senha_sudo:str):
         
@@ -78,10 +83,13 @@ class AutoVASBrain:
 
     # ---------------------------- ARMAZENAR IPS ATIVOS ------------------------------- #
 
+
     # Cria um .txt contendo o IP do gateway e todos os hosts conectados a ele neste exato momento
     # Utiliza traceroute e nmap
 
+
         ## ---------------------------- ENCONTRAR GATEWAY ------------------------------- ##
+
 
     def encontrar_gateway(self, senha_sudo:str):
 
@@ -107,6 +115,7 @@ class AutoVASBrain:
 
         ## ---------------------------- ARMAZENAR IPs ------------------------------- ##
 
+
     def armazenar_hosts(self, gateway_ip: str):
         # Comando Nmap para escanear a rede do Gateway
             comando_nmap = f"nmap -sn -n {gateway_ip}/24 | grep 'Nmap scan report'" + "| awk '{print $5}' | paste -sd ','"
@@ -122,6 +131,7 @@ class AutoVASBrain:
             
 
     # ---------------------------- CRIAR TARGET ------------------------------- #
+
 
     # Determina o IP do gateway e o de todos os hosts conectados a ele no momento e cria um TARGET com estes IPs
 
@@ -141,7 +151,10 @@ class AutoVASBrain:
 
         self.exec_script_temp(script, senha_sudo)
 
+
     # ---------------------------- CRIAR TASK ------------------------------- #
+
+
 
     # Cria task com o último target criado.
 
@@ -158,8 +171,7 @@ class AutoVASBrain:
         with open("scripts/CreateTask/task.csv", "w") as file:
             file.write(csv_content)
     
-        script = f'''
-        #!/bin/bash
+        script = f'''#!/bin/bash
 
         docker cp scripts/CreateTask/task.csv {id_container}:/auto_vas/task.csv
 
@@ -174,12 +186,13 @@ class AutoVASBrain:
 
     # ---------------------------- REALIZAR SCAN ------------------------------- #
 
+
+
     def realizar_scan(self, senha_openvas: str, senha_sudo: str,  id_container:str , nome_task: str):
 
         with open("scripts/RunScan/startscan.csv", "w") as file:
             content = f'"{nome_task}"'
             file.write(content)
-
 
         script = f'''
         #!/bin/bash
@@ -196,15 +209,16 @@ class AutoVASBrain:
         self.exec_script_temp(script, senha_sudo)
         
 
-    # ---------------------------- Fazer Relatorio ------------------------------- #
+    
+        # ---------------------------- Fazer Relatorio ------------------------------- #
 
 
     def escolher_local_arquivo(self):
 
         caminho = filedialog.asksaveasfilename(
             title="Salvar relatório como",
-            defaultextension=".pdf",
-            filetypes=[("PDF files", "*.pdf"), ("Todos os arquivos", "*.*")]
+            defaultextension=".xlsx",
+            filetypes=[("XLSX files", "*.xlsx"), ("Todos os arquivos", "*.*")]
         )
 
         return caminho
@@ -213,11 +227,6 @@ class AutoVASBrain:
     def gerar_relatorio(self, senha_openvas: str, senha_sudo: str, id_container: str):
 
         script = f'''
-        #!/bin/bash
-
-        docker cp scripts/ListReports/export-pdf-report.gmp.py {id_container}:/auto_vas/export-pdf-report.gmp.py
-        docker cp scripts/ListReports/list-reports.gmp.py {id_container}:/auto_vas/list-reports.gmp.py
-
         docker exec -i --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket list-reports.gmp.py"
         '''
 
@@ -255,9 +264,9 @@ class AutoVASBrain:
 
         script = f'''
         docker exec {id_container} bash -c "chmod 777 /auto_vas"
-        docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-pdf-report.gmp.py {relatorio_id} relatorio"
-        docker cp {id_container}:/auto_vas/relatorio.pdf  "{caminho_arquivo}"
-
+        docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-xml-report.gmp.py {relatorio_id} pretty_relatorio"
+        docker exec -it {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && openvasreporting -i pretty_relatorio.xml"
+        docker cp {id_container}:/auto_vas/openvas_report.xlsx  "{caminho_arquivo}"
         '''
 
         self.exec_script_temp(script, senha_sudo)
