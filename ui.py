@@ -191,25 +191,33 @@ class AutoVASInterface:
         self.id_container = self.brain.encontrar_gmvd_id(self.senha_sudo)
 
         if not self.senha_sudo or not self.senha_openvas:
-            messagebox.showinfo(title = "Erro", message = "Certifique-se de preencher todos os campos de senha!")
-        
+            messagebox.showinfo(title="Erro", message="Certifique-se de preencher todos os campos de senha!")
         else:
-            ids = self.brain.gerar_relatorio(self.senha_openvas, self.senha_sudo, self.id_container)
+            relatorios = self.brain.gerar_relatorio(self.senha_openvas, self.senha_sudo, self.id_container)
+            print("Relatórios retornados:", relatorios)
 
             self.window = Toplevel()
             self.window.wm_title("Ver Relatórios")
-            self.window.config(padx=40, pady=40)
+            self.window.config(padx=20, pady=20)
             self.window.resizable(width=False, height=False)
 
-            titulo = Label(self.window, text="Relatórios Disponíveis", font=("calibre", 20, "bold"))
-            titulo.grid(row=0, column=0, columnspan=2, pady=(0, 20))
+            # Cabeçalhos da tabela
+            headers = ["ID", "Criação", "Modificação", "Tarefa", "Status", "Progresso", "Ação"]
+            for col, texto in enumerate(headers):
+                label = Label(self.window, text=texto, font=("calibre", 12, "bold"))
+                label.grid(row=0, column=col, sticky="nsew", padx=5, pady=5)
 
-            for idx, relatorio_id in enumerate(ids):
-                label_id = Label(self.window, text=relatorio_id, font=("calibre", 12))
-                label_id.grid(row=idx+1, column=0, sticky="w", padx=(0, 20), pady=5)
+            # Conteúdo dos relatórios
+            for idx, relatorio in enumerate(relatorios):
+                Label(self.window, text=relatorio["id"], font=("calibre", 10), wraplength=250).grid(row=idx+1, column=0, sticky="w", padx=5, pady=2)
+                Label(self.window, text=relatorio["creation_time"], font=("calibre", 10)).grid(row=idx+1, column=1, padx=5, pady=2)
+                Label(self.window, text=relatorio["modification_time"], font=("calibre", 10)).grid(row=idx+1, column=2, padx=5, pady=2)
+                Label(self.window, text=relatorio["task_name"], font=("calibre", 10)).grid(row=idx+1, column=3, padx=5, pady=2)
+                Label(self.window, text=relatorio["status"], font=("calibre", 10)).grid(row=idx+1, column=4, padx=5, pady=2)
+                Label(self.window, text=relatorio["progress"], font=("calibre", 10)).grid(row=idx+1, column=5, padx=5, pady=2)
 
-                btn_baixar = Button(self.window, text="Baixar", command=lambda rid=relatorio_id: self.brain.baixar_relatorio(rid,self.senha_sudo,self.id_container,self.senha_openvas))
-                btn_baixar.grid(row=idx+1, column=1, pady=5)
+                btn_baixar = Button(self.window, text="Baixar", command=lambda rid=relatorio["id"]: self.brain.baixar_relatorio(rid, self.senha_sudo, self.id_container, self.senha_openvas))
+                btn_baixar.grid(row=idx+1, column=6, padx=5, pady=2)
 
     
 

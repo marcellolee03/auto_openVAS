@@ -224,32 +224,53 @@ class AutoVASBrain:
         return caminho
 
 
-    def gerar_relatorio(self, senha_openvas: str, senha_sudo: str, id_container: str):
 
+
+    def gerar_relatorio(self, senha_openvas: str, senha_sudo: str, id_container: str):
         script = f'''
         docker exec -i --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket list-reports.gmp.py"
         '''
 
-        with tempfile.NamedTemporaryFile(mode="w", delete = False, suffix=".sh") as temp_script:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".sh") as temp_script:
             temp_script.write(script)
             temp_script_path = temp_script.name
 
         try:
             comando = f'echo {senha_sudo} | sudo -S bash {temp_script_path}'
-            resultado = subprocess.run(comando, shell=True, capture_output = True, text=True)
+            resultado = subprocess.run(comando, shell=True, capture_output=True, text=True)
             saida = resultado.stdout
-        
+            print("Saída bruta do comando:\n", saida)  # Debug
+
         finally:
             if os.path.exists(temp_script_path):
                 os.remove(temp_script_path)
 
-        ids = re.findall(r'\b[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\b', saida)
+        # Parse da saída
+        linhas = saida.strip().splitlines()
 
-        print("IDs encontrados:")
-        for id in ids:
-            print(id)
-    
-        return ids
+        relatorios = []
+        for linha in linhas:
+            # Ignora cabeçalhos e linhas separadoras
+            if linha.strip().startswith("#") or linha.strip().startswith("-") or linha.strip() == "":
+                continue
+
+            partes = [parte.strip() for parte in linha.split("|")]
+            if len(partes) < 7:
+                continue  # Linha incompleta, pula
+
+            relatorio = {
+                "id": partes[1],
+                "creation_time": partes[2],
+                "modification_time": partes[3],
+                "task_name": partes[4],
+                "status": partes[5],
+                "progress": partes[6]
+            }
+            relatorios.append(relatorio)
+
+        print("Relatórios capturados:", relatorios)  # Debug
+
+        return relatorios
 
 
     def baixar_relatorio(self, relatorio_id, senha_sudo: str, id_container: str, senha_openvas):
@@ -263,9 +284,11 @@ class AutoVASBrain:
         nome_arquivo = caminho_arquivo.split("/")[-1]
 
         script = f'''
+        #!/bin/bash
         docker exec {id_container} bash -c "chmod 777 /auto_vas"
-        docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-xml-report.gmp.py {relatorio_id} pretty_relatorio"
-        docker exec -it {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && openvasreporting -i pretty_relatorio.xml"
+        
+        docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-xml-report.gmp.py {relatorio_id} pretty_relatorio\
+            && openvasreporting -i pretty_relatorio.xml"
         docker cp {id_container}:/auto_vas/openvas_report.xlsx  "{caminho_arquivo}"
         '''
 
