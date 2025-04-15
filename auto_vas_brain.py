@@ -1,8 +1,8 @@
 import subprocess
 import tempfile
 import os
-from re import search, MULTILINE
-import re
+import pandas
+from re import search
 from tkinter import filedialog
 
 
@@ -45,7 +45,7 @@ class AutoVASBrain:
         docker cp scripts/CreateTask/create-tasks-from-csv.gmp.py {id_container}:/auto_vas/create-tasks-from-csv.gmp.py
         docker cp scripts/RunScan/start-scans-from-csv.py {id_container}:/auto_vas/start-scans-from-csv.py
         docker cp scripts/ListReports/list-reports.gmp.py {id_container}:/auto_vas/list-reports.gmp.py
-        docker cp scripts/ListReports/export-pdf-report.gmp.py {id_container}:/auto_vas/export-pdf-report.gmp.py
+        docker cp scripts/ListReports/export-csv-report.gmp.py {id_container}:/auto_vas/export-csv-report.gmp.py
         docker cp scripts/ListReports/export-xml-report.gmp.py {id_container}:/auto_vas/export-xml-report.gmp.py
         docker cp scripts/ListReports/list-reports.gmp.py {id_container}:/auto_vas/list-reports.gmp.py
 
@@ -213,16 +213,22 @@ class AutoVASBrain:
         # ---------------------------- Fazer Relatorio ------------------------------- #
 
 
-    def escolher_local_arquivo(self):
+
+    def escolher_local_arquivo(self, usar_csv: bool = False):
+        if usar_csv:
+            extensao_padrao = ".csv"
+            tipos_arquivo = [("CSV files", "*.csv"), ("Todos os arquivos", "*.*")]
+        else:
+            extensao_padrao = ".xlsx"
+            tipos_arquivo = [("XLSX files", "*.xlsx"), ("Todos os arquivos", "*.*")]
 
         caminho = filedialog.asksaveasfilename(
             title="Salvar relatório como",
-            defaultextension=".xlsx",
-            filetypes=[("XLSX files", "*.xlsx"), ("Todos os arquivos", "*.*")]
+            defaultextension=extensao_padrao,
+            filetypes=tipos_arquivo
         )
 
         return caminho
-
 
 
 
@@ -273,28 +279,45 @@ class AutoVASBrain:
         return relatorios
 
 
-    def baixar_relatorio(self, relatorio_id, senha_sudo: str, id_container: str, senha_openvas):
-        caminho_arquivo = self.escolher_local_arquivo()
+    def baixar_relatorio(self, relatorio_id, senha_sudo: str, id_container: str, senha_openvas, nome_do_arquivo: str, usar_csv: bool = False):
 
-        if not caminho_arquivo:
-            print("Operação cancelada pelo usuário.")
-            return
+        if usar_csv:
 
-        # Pega apenas o nome do arquivo com extensão para passar no comando
-        nome_arquivo = caminho_arquivo.split("/")[-1]
+            script = f'''
+            #!/bin/bash
 
-        script = f'''
-        #!/bin/bash
-        docker exec {id_container} bash -c "chmod 777 /auto_vas"
+            docker exec {id_container} bash -c "chmod 777 /auto_vas"
+            
+            docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-csv-report.gmp.py {relatorio_id} pretty_relatorio"
+            docker cp {id_container}:/auto_vas/pretty_relatorio.csv relatorios/csv_bruto/{nome_do_arquivo}.csv
+            '''
+
+        else:
+
+            script = f'''
+            #!/bin/bash
+
+            docker exec {id_container} bash -c "chmod 777 /auto_vas"
+            
+            docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-xml-report.gmp.py {relatorio_id} pretty_relatorio\
+                && openvasreporting -i pretty_relatorio.xml -f csv"
+            docker cp {id_container}:/auto_vas/openvas_report.xlsx relatorios/xlsx/{nome_do_arquivo}.xlsx
+            '''
         
-        docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-xml-report.gmp.py {relatorio_id} pretty_relatorio\
-            && openvasreporting -i pretty_relatorio.xml"
-        docker cp {id_container}:/auto_vas/openvas_report.xlsx  "{caminho_arquivo}"
-        '''
 
         self.exec_script_temp(script, senha_sudo)
 
-        print(f"Relatório sendo salvo em: {caminho_arquivo}") 
+        print(f"Relatório salvo")
     
+
+    def filtrar_csv(self, items: list, nome_do_arquivo: str, caminho):
+        
+        report_df = pandas.read_csv(caminho)
+        df_filtrado = report_df.filter(items = items)
+            
+        caminho_arq_salvo = "relatorios/filtrado/" + nome_do_arquivo + ".csv"
+
+        df_filtrado.to_csv(caminho_arq_salvo)
+        print("csv filtrado salvo com sucesso")
    
    

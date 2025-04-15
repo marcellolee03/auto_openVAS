@@ -2,6 +2,9 @@ from auto_vas_brain import AutoVASBrain
 from tkinter import *
 from tkinter import messagebox
 from tkinter.ttk import *
+from tkinter import simpledialog
+from tkinter import filedialog
+
 
 class AutoVASInterface:
 
@@ -49,18 +52,21 @@ class AutoVASInterface:
         self.nome_task_entry = Entry(width = 36, font = ("calibre", 10, "normal"))
         self.nome_task_entry.grid(row=4, column=1, columnspan=2)
 
-        #button
-        self.setup_autovas = Button(text = "Setup AutoVAS", command = self.setup)
-        self.setup_autovas.grid(row=5, column=0, sticky = "ew", pady= 20)
+        #buttons
+        self.setup_autovas = Button(text="Setup AutoVAS", command=self.setup)
+        self.setup_autovas.grid(row=5, column=0, sticky="ew", pady=(20, 10))
 
-        self.avancado = Button(text = "Opções Avançadas", command = self.opc_avancadas)
-        self.avancado.grid(row=5, column=2, sticky= "ew")
-        
-        self.relatorios = Button(text = "Ver Relatorios", command = self.relatorio)
-        self.relatorios.grid(row=5, column=1, sticky = "ew")
+        self.avancado = Button(text="Opções Avançadas", command=self.opc_avancadas)
+        self.avancado.grid(row=5, column=2, sticky="ew", pady=(20, 10))
 
-        self.one_click_scan_button = Button(text = "Realizar Scan", command = self.oneclick_scan)
-        self.one_click_scan_button.grid(row=6, column=0, sticky = "ew", columnspan = 3)
+        self.relatorios = Button(text="Ver Relatórios", command=self.relatorio)
+        self.relatorios.grid(row=5, column=1, sticky="ew", pady=(20, 10))
+
+        self.filtrar_csv = Button(text="Filtrar CSV", command=self.filtrar_csv_funcao)
+        self.filtrar_csv.grid(row=6, column=0, sticky="ew")
+
+        self.one_click_scan_button = Button(text="Realizar Scan", command=self.oneclick_scan)
+        self.one_click_scan_button.grid(row=6, column=1, sticky="ew", columnspan=2, pady=10)
 
 
         self.window.mainloop()
@@ -185,6 +191,13 @@ class AutoVASInterface:
    
     # ---------------------------- Ver Relatorios ------------------------------- #
 
+    def salvar_relatorio(self, relatorio_id, senha_sudo: str, id_container: str, senha_openvas: str, usar_csv: bool):
+        self.window.withdraw()
+        nome_do_arquivo = simpledialog.askstring(title = "Nomeie o arquivo", prompt = "Digite o nome do arquivo:")
+
+        self.brain.baixar_relatorio(relatorio_id, senha_sudo, id_container, senha_openvas, nome_do_arquivo, usar_csv)
+
+
     def relatorio(self):
         self.senha_sudo = self.senha_sudo_entry.get()
         self.senha_openvas = self.senha_openvas_entry.get()
@@ -216,8 +229,91 @@ class AutoVASInterface:
                 Label(self.window, text=relatorio["status"], font=("calibre", 10)).grid(row=idx+1, column=4, padx=5, pady=2)
                 Label(self.window, text=relatorio["progress"], font=("calibre", 10)).grid(row=idx+1, column=5, padx=5, pady=2)
 
-                btn_baixar = Button(self.window, text="Baixar", command=lambda rid=relatorio["id"]: self.brain.baixar_relatorio(rid, self.senha_sudo, self.id_container, self.senha_openvas))
+                btn_baixar = Button(self.window, text="Baixar CSV", command=lambda rid=relatorio["id"]: self.salvar_relatorio(rid, self.senha_sudo, self.id_container, self.senha_openvas, usar_csv=True))
                 btn_baixar.grid(row=idx+1, column=6, padx=5, pady=2)
 
+                btn_baixar = Button(self.window, text="Baixar XLSS", command=lambda rid=relatorio["id"]: self.salvar_relatorio(rid, self.senha_sudo, self.id_container, self.senha_openvas, usar_csv=False))
+                btn_baixar.grid(row=idx+1, column=7, padx=5, pady=2)
+
+    # ---------------------------- Filtrar csv ------------------------------- #
+
+    def filtrar_csv_funcao(self):
+        self.window = Toplevel()
+        self.window.config(padx=50, pady=30)
+        self.window.resizable(width=False, height=False)
+
+        #self.titulo = Label(self.window, text= "Filtrar CSV", font = ("calibre", 20, "bold"))
+        #self.titulo.grid(row=0,column=0, pady=30)
+
+
+        colunas = ['IP', 'Hostname', 'Port', 'Port Protocol', 'CVSS', 'Severity', 'QoD', 'Solution Type', 'NVT Name', 'Summary', 'Specific Result', 'NVT QID',\
+                   'CVEs', 'Task ID', 'Task Name', 'Timestamp', 'Result ID', 'Impact', 'Solution', 'Affected Software/OS', 'Vulnerability Insight',\
+                    'Vulnerability Detection Method', 'Product Detection Result', 'BIDs', 'CERTs']
+        
+        filtros = []
+        vars = []
+
+        for _ in range(0, len(colunas)):
+            vars.append(IntVar())
+
+
+        filtros_label = Label(self.window, text = "Selecione Filtros", font = ("calibre", 18, "bold"))
+        filtros_label.grid(row = 0, column = 0, pady= (0, 20))
+        i = 0
+        j = 0
+        k = 1
+        for name in colunas:
+            button = Checkbutton(self.window, text = name, variable = vars[i], onvalue = 1, offvalue = 0, command = lambda: self.add_item(vars, filtros, colunas))
+
+            if i == 8:
+                j = 0
+                k += 1
+            
+            if i == 16:
+                j = 0
+                k += 1
+        
+            button.grid(row = k, column = j, pady = 5, padx = 3)
+
+            j += 1
+            i += 1
+
+
+        self.filtrar_arquivo = Button(self.window, text = "Selecionar Arquivo e Filtrar",command=lambda :self.filtrar_relatorio(filtros))
+        self.filtrar_arquivo.grid(row = 5, column = 7, pady = (20, 0), columnspan = 2)
     
+
+    def filtrar_relatorio(self, filtros: list):
+        self.window.withdraw()
+
+        tipos_arquivo = [("CSV files", "*.csv")]
+
+        caminho = filedialog.askopenfilename(
+            title="Selecione um arquivo CSV",
+            filetypes=tipos_arquivo
+        )
+
+        nome_do_arquivo = simpledialog.askstring(title = "Nomeie o arquivo", prompt = "Digite o nome do arquivo:")
+
+        self.brain.filtrar_csv(filtros, nome_do_arquivo, caminho)
+
+        messagebox.showinfo(title = "Sucesso!", message = f"Arquivo {nome_do_arquivo} criado com sucesso! Salvo em relatorios/filtrado.")
+
+    
+    def add_item(self, vars:list, filtros: list, colunas: list):
+        i = 0
+
+        for var in vars:
+            if var.get() == 1:
+                filtros.append(colunas[i])
+            
+            if var.get() == 0 and (colunas[i] in filtros):
+                filtros.remove(colunas[i])
+                
+            i += 1
+        
+        filtros = list(dict.fromkeys(filtros))
+        print(filtros)
+            
+        
 
