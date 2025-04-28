@@ -1,9 +1,16 @@
 import subprocess
 import tempfile
 import os
-import pandas
+import re
+import sys
 from re import search
 from tkinter import filedialog
+
+try:
+    import pandas 
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "pandas"])
+    import pandas
 
 
 class AutoVASBrain:
@@ -91,24 +98,21 @@ class AutoVASBrain:
         ## ---------------------------- ENCONTRAR GATEWAY ------------------------------- ##
 
 
-    def encontrar_gateway(self, senha_sudo:str):
 
-        # Executando o traceroute e capturando a saída
+    def encontrar_gateway(self):
+        comando = "ip route show default"
+        saida = subprocess.run(comando, shell=True, capture_output=True, text=True)
+        saida = saida.stdout
 
-        comando = f'echo {senha_sudo} | sudo -S traceroute -I google.com'
+        # Exemplo de saída:
+        # default via 192.168.1.1 dev wlan0 proto dhcp metric 600 
 
-        saida_traceroute = subprocess.run(comando, shell=True, capture_output=True, text=True)
-        saida_traceroute = saida_traceroute.stdout
-
-
-        # Pegando o primeiro IP da lista (Gateway)
-        match = search(r'\n\s*1\s+_gateway\s+\((\d+\.\d+\.\d+\.\d+)\)', saida_traceroute)
+        match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', saida)
 
         if match:
             gateway_ip = match.group(1)
             print(f"Gateway encontrado: {gateway_ip}")
             return gateway_ip
-        
         else:
             print("Erro. Gateway não encontrado.")
 
@@ -122,7 +126,8 @@ class AutoVASBrain:
 
             # Executando o Nmap e armazenando os IPs
             resultado = subprocess.run(comando_nmap, shell=True, capture_output=True, text=True)
-            ips_ativos = resultado.stdout.strip()
+            ips_ativos = "172.000.0.0"
+        
 
             # Salvando os IPs no arquivo lista_IPs.txt
             with open("IPs/lista_IPs.txt", "w") as file:
@@ -299,8 +304,8 @@ class AutoVASBrain:
 
             docker exec {id_container} bash -c "chmod 777 /auto_vas"
             
-            docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-xml-report.gmp.py {relatorio_id} pretty_relatorio\
-                && openvasreporting -i pretty_relatorio.xml -f csv"
+            docker exec --user auto_vas {id_container} bash -c "source /path/to/venv/bin/activate && cd auto_vas && gvm-script --gmp-username admin --gmp-password {senha_openvas} socket export-csv-report.gmp.py {relatorio_id} pretty_relatorio\
+                && openvasreporting -i pretty_relatorio.xml -f xlsx"
             docker cp {id_container}:/auto_vas/openvas_report.xlsx relatorios/xlsx/{nome_do_arquivo}.xlsx
             '''
         
