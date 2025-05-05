@@ -4,14 +4,52 @@ import os
 import re
 import sys
 from re import search
+
+# Verifica e instala tkinter
+try:
+    import tkinter as tk
+except ImportError:
+    print("Tkinter não encontrado. Tentando instalar...")
+
+    try:
+        subprocess.check_call(["sudo", "apt", "update"])
+        subprocess.check_call(["sudo", "apt", "install", "-y", "python3-tk"])
+        subprocess.check_call(["sudo", "apt", "install", "-y", "nmap"])
+        print("Instalação do Tkinter concluída.")
+
+        # Depois da instalação, importa novamente
+        import tkinter as tk
+    except Exception as e:
+        print(f"Erro ao instalar Tkinter: {e}")
+        sys.exit(1)
+
 from tkinter import filedialog
 
+# Verifica e instala pandas
 try:
-    import pandas 
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "pandas"])
     import pandas
+except ImportError:
+    print("Pandas não encontrado. Tentando instalar...")
 
+    try:
+        # Primeiro tenta garantir que pip está disponível
+        subprocess.check_call(["sudo", "apt", "install", "-y", "python3-pip"])
+
+        # Atualiza pip e instala pandas
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "pip"])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "pandas"])
+
+        # Depois da instalação, importa novamente
+        import pandas
+        print("Pandas instalado e importado com sucesso.")
+
+    except ImportError:
+        print("Erro: Pandas não pôde ser importado após a instalação.")
+
+    except Exception as e:
+        print(f"Erro ao instalar pandas: {e}")
+
+print("Todas as dependências foram importadas com sucesso. Continuando o programa...")
 
 class AutoVASBrain:
 
@@ -79,33 +117,18 @@ class AutoVASBrain:
 
     # ---------------------------- ENCONTRAR ID DO CONTAINER ------------------------------- #
 
-
     def encontrar_gmvd_id(self, senha_sudo:str):
         
         comando = f'echo {senha_sudo} | sudo -S docker ps -q -f name=greenbone-community-edition-gvmd-1'
         id = subprocess.run(comando, capture_output=True, text=True, shell=True).stdout.strip()
 
         return id
-    
-
-    # ---------------------------- ARMAZENAR IPS ATIVOS ------------------------------- #
-
-
-    # Cria um .txt contendo o IP do gateway e todos os hosts conectados a ele neste exato momento
-    # Utiliza traceroute e nmap
-
-
         ## ---------------------------- ENCONTRAR GATEWAY ------------------------------- ##
-
-
 
     def encontrar_gateway(self):
         comando = "ip route show default"
         saida = subprocess.run(comando, shell=True, capture_output=True, text=True)
         saida = saida.stdout
-
-        # Exemplo de saída:
-        # default via 192.168.1.1 dev wlan0 proto dhcp metric 600 
 
         match = re.search(r'default via (\d+\.\d+\.\d+\.\d+)', saida)
 
@@ -121,13 +144,12 @@ class AutoVASBrain:
 
 
     def armazenar_hosts(self, gateway_ip: str):
-        # Comando Nmap para escanear a rede do Gateway
+            # Comando Nmap para escanear a rede do Gateway
             comando_nmap = f"nmap -sn -n {gateway_ip}/24 | grep 'Nmap scan report'" + "| awk '{print $5}' | paste -sd ','"
 
             # Executando o Nmap e armazenando os IPs
             resultado = subprocess.run(comando_nmap, shell=True, capture_output=True, text=True)
-            ips_ativos = "172.000.0.0"
-        
+            ips_ativos = resultado.stdout.strip()
 
             # Salvando os IPs no arquivo lista_IPs.txt
             with open("IPs/lista_IPs.txt", "w") as file:
@@ -279,7 +301,7 @@ class AutoVASBrain:
             }
             relatorios.append(relatorio)
 
-        print("Relatórios capturados:", relatorios)  # Debug
+        #print("Relatórios capturados:", relatorios)  # Debug
 
         return relatorios
 
@@ -324,5 +346,32 @@ class AutoVASBrain:
 
         df_filtrado.to_csv(caminho_arq_salvo)
         print("csv filtrado salvo com sucesso")
+    
+    def atualizar_feed(self):
+	    comando = (
+		"cd openvas/ && chmod +x setup-and-start-greenbone-community-edition.sh "
+		"&& sudo ./setup-and-start-greenbone-community-edition.sh; exec bash"
+	    )
+	    subprocess.Popen(['gnome-terminal', '--', 'bash', '-c', comando])
+
+    def instalar_openvas_docker(self):
+        comando_instalacao = """sudo -v && \
+    yes | sudo apt-get -y install apt-transport-https ca-certificates curl software-properties-common && \
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    sudo apt-get -y update && sudo apt-get -y install docker-ce && sudo systemctl start docker && \
+    mkdir -p ~/.docker/cli-plugins/ && \
+    curl -SL https://github.com/docker/compose/releases/download/v2.27.1/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose && \
+    chmod +x ~/.docker/cli-plugins/docker-compose && \
+    curl -f -O https://greenbone.github.io/docs/latest/_static/setup-and-start-greenbone-community-edition.sh && \
+    chmod u+x setup-and-start-greenbone-community-edition.sh && \
+    yes | sudo ./setup-and-start-greenbone-community-edition.sh && \
+    sudo usermod -aG docker ${USER} && \
+    su - ${USER}"""
+
+        subprocess.Popen(['gnome-terminal', '--', 'bash', '-c', comando_instalacao + '; exec bash'])
+
+
+
    
    
