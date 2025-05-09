@@ -104,7 +104,7 @@ class AutoVASInterface:
                 self.brain.instalar_openvas_docker()
 
             janela = Toplevel()
-            janela.geometry("300x150")
+            janela.config(padx=40, pady=20)
             janela.resizable(False, False)
 
             label = Label(janela, text="Escolha uma opcao :", font=("calibre", 10, "normal"))
